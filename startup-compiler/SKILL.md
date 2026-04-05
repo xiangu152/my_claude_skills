@@ -18,15 +18,14 @@ Compile tasks into self-contained execution units. Each task bundles its own env
 ## File Structure
 
 ```
-项目/
+~/.claude/
 ├── task-manifest.json          # 任务注册表（CRUD 无 D）
 ├── dispatcher/
-│   ├── dispatch.py             # 定时调度器
-│   └── file_watch.js           # 文件变化调度器
+│   ├── _dispatched/            # 编译生成的任务指令文件
+│   └── triggers/               # 编译生成的 trigger 函数
+│       └── {task-id}_trigger.py
 ├── output/                     # 任务输出
-├── logs/                       # 执行日志（append-only）
-└── .claude/
-    └── CLAUDE.md               # 启动指引
+└── logs/                       # 执行日志（append-only）
 ```
 
 ## Compilation Workflow
@@ -37,7 +36,7 @@ Ask user:
 - What task to automate?
 - Environment dependencies (env vars, tools, files)?
 - Delivery method (output path, format)?
-- Trigger condition (schedule / file_watch / manual)?
+- Trigger condition（用自然语言描述调度需求，编译器自动生成 trigger 函数）
 - Which skills to bundle?
 
 ### Phase 2: Environment Verification
@@ -62,7 +61,7 @@ All dependencies must pass before proceeding.
 
 ### Phase 3: Package Task
 
-Create task config and add to `task-manifest.json`:
+**3a.** 创建任务配置并添加到 `task-manifest.json`：
 
 ```json
 {
@@ -81,13 +80,14 @@ Create task config and add to `task-manifest.json`:
     "timeout": 3600
   },
   "delivery": {
-    "path": "./output/daily-report.md",
+    "path": "~/.claude/output/daily-report.md",
     "format": "markdown",
-    "log_path": "./logs/task-001.log"
+    "log_path": "~/.claude/logs/task-001.log"
   },
   "trigger": {
     "type": "schedule",
-    "time": "09:00"
+    "time": "09:00",
+    "eval": "~/.claude/dispatcher/triggers/task-001_trigger.py"
   },
   "status": "active",
   "run_count": 0,
@@ -95,13 +95,62 @@ Create task config and add to `task-manifest.json`:
 }
 ```
 
+**3b.** 根据用户自然语言描述的调度需求，生成 trigger 函数文件 `~/.claude/dispatcher/triggers/{task-id}_trigger.py`。
+
+函数接口（所有 trigger 文件统一）：
+
+```python
+def should_dispatch(context: dict) -> bool:
+    """
+    context = {
+        "now": datetime.datetime,    # 当前本地时间
+        "today": datetime.date,      # 当前日期
+        "last_run": str | None,      # 上次发派的 ISO 时间戳
+        "run_count": int,            # 已发派次数
+        "task_dir": str,             # ~/.claude 绝对路径
+    }
+    """
+```
+
+每个文件**必须**包含 `if __name__ == '__main__':` 测试块，可独立运行验证。
+
+示例（每天 09:00 触发）：
+
+```python
+import datetime
+
+def should_dispatch(context):
+    now = context["now"]
+    today = context["today"]
+    last_run = context.get("last_run")
+
+    # 每天 09:00 触发
+    if now.strftime("%H:%M") != "09:00":
+        return False
+
+    # 今天已执行则跳过
+    if last_run and last_run.startswith(today.isoformat()):
+        return False
+
+    return True
+
+if __name__ == '__main__':
+    import datetime
+    ctx = {
+        "now": datetime.datetime.now(),
+        "today": datetime.date.today(),
+        "last_run": None,
+        "run_count": 0,
+        "task_dir": "~/.claude",
+    }
+    print(f"should_dispatch = {should_dispatch(ctx)}")
+```
+
 ### Phase 4: Test Run
 
-Simulate execution:
-1. Run dispatcher manually with this task
-2. Verify output matches expected
-3. Verify log entry is correct
-4. User confirms test passed
+1. **验证 trigger 函数**：独立运行 trigger 函数文件，确认 `if __name__ == '__main__'` 输出合理
+2. **试跑任务**：通过 dispatcher 手动触发，验证输出和日志
+3. User confirms test passed
 
 ### Phase 5: Register
 
@@ -116,22 +165,35 @@ Only after test passes:
 
 ```bash
 # Start
-python3 dispatcher/dispatch.py
+python3 ~/.claude/dispatcher/dispatch.py
 
 # Background
-nohup python3 dispatcher/dispatch.py &
+nohup python3 ~/.claude/dispatcher/dispatch.py &
 ```
 
-Checks every 60 seconds. When time matches trigger, dispatches task to terminal.
+每 60 秒轮询所有 active 任务，调用 `evaluate_trigger(task, context)` 判断是否发派。
+- 有 `trigger.eval` 字段 → 调用编译生成的 Python trigger 函数
+- 无 `trigger.eval` 字段 → 走旧版硬编码逻辑（向后兼容）
 
 ### file_watch.js (File Change)
 
 ```bash
 # Start
-node dispatcher/file_watch.js
+node ~/.claude/dispatcher/file_watch.js
 ```
 
-Watches specified files via `fs.watchFile`. On change, dispatches task.
+监控指定文件变化。文件变化后，先调用 trigger 函数二次判断（如果配置了 `trigger.eval`），满足条件才发派。
+
+### Cross-Platform Support
+
+| 功能 | macOS | Windows | Linux |
+|------|-------|---------|-------|
+| 终端弹窗 | AppleScript → Terminal | `start cmd /c` | gnome-terminal / xterm |
+| 窗口关闭 | osascript close | `exit` | `exit` |
+| 环境变量注入 | ~/.zshrc, ~/.bashrc, ~/.bash_profile, ~/.profile | 系统环境变量（不读 rc 文件） | ~/.bashrc, ~/.profile |
+| 工具检测 | `which` | `where` | `which` |
+| Python 命令 | `python3` | `python` | `python3` |
+| HOME 目录 | `$HOME` | `%USERPROFILE%` | `$HOME` |
 
 ### How Dispatch Works
 

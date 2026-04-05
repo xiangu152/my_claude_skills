@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-定时调度器 — 检测触发条件，发派任务到终端
-只做检测和发派，调度逻辑由编译时确定。
+调度器 — 检测触发条件，发派任务到终端
+调度逻辑由编译时生成的 trigger 函数决定，调度器只负责调用。
 """
 
 import json
@@ -16,6 +16,20 @@ MANIFEST = os.path.join(BASE_DIR, 'task-manifest.json')
 TASK_DISPATCH_DIR = os.path.join(BASE_DIR, 'dispatcher/_dispatched')
 
 
+def _get_shell_rc_paths():
+    """返回当前平台可能存在的 shell 配置文件路径"""
+    candidates = [
+        '~/.zshrc',
+        '~/.bashrc',
+        '~/.bash_profile',
+        '~/.profile',
+    ]
+    if sys.platform == 'win32':
+        # Windows: 环境变量通常通过系统设置，不依赖 shell rc
+        return []
+    return [os.path.expanduser(p) for p in candidates]
+
+
 def load_shell_env():
     """从 shell 配置文件读取任务所需的环境变量，注入到 os.environ"""
     required_keys = set()
@@ -27,22 +41,20 @@ def load_shell_env():
     if not required_keys:
         return
 
-    # 从 .zshrc 中提取 export 行
-    rc_path = os.path.expanduser('~/.zshrc')
-    try:
-        with open(rc_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith('export ') and '=' in line:
-                    rest = line[len('export '):]
-                    key, _, val = rest.partition('=')
-                    key = key.strip()
-                    if key in required_keys and key not in os.environ:
-                        # 去掉引号
-                        val = val.strip().strip('"').strip("'")
-                        os.environ[key] = val
-    except Exception:
-        pass
+    for rc_path in _get_shell_rc_paths():
+        try:
+            with open(rc_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('export ') and '=' in line:
+                        rest = line[len('export '):]
+                        key, _, val = rest.partition('=')
+                        key = key.strip()
+                        if key in required_keys and key not in os.environ:
+                            val = val.strip().strip('"').strip("'")
+                            os.environ[key] = val
+        except Exception:
+            continue
 
 
 def load_manifest():
@@ -112,8 +124,15 @@ def compile_dispatch_command(task):
             env_exports.append(f'export {var}="{val}"')
 
     env_prefix = "; ".join(env_exports) + "; " if env_exports else ""
-    close_window = """osascript -e 'tell application "Terminal" to close front window'"""
-    return f"{env_prefix}claude --permission-mode bypassPermissions --print \"$(cat '{dispatch_file}')\"; {close_window}"
+    claude_cmd = f"{env_prefix}claude --permission-mode bypassPermissions --print \"$(cat '{dispatch_file}')\""
+
+    if sys.platform == 'darwin':
+        close_window = """osascript -e 'tell application "Terminal" to close front window'"""
+        return f"{claude_cmd}; {close_window}"
+    elif sys.platform == 'win32':
+        return f"{claude_cmd} && exit"
+    else:
+        return f"{claude_cmd}; exit"
 
 
 SKILL_DIR = os.path.expanduser('~/.claude/skills')
@@ -131,7 +150,8 @@ def verify_task(task):
 
     # 2. 检查工具
     for tool in task.get('environment', {}).get('tools', []):
-        result = subprocess.run(['which', tool], capture_output=True)
+        which_cmd = ['where' if sys.platform == 'win32' else 'which', tool]
+        result = subprocess.run(which_cmd, capture_output=True)
         if result.returncode != 0:
             errors.append(f"工具 {tool} 未找到")
 
@@ -259,52 +279,101 @@ def compile_task(task_id):
 
 
 def dispatch(task):
-    """发派任务到子进程执行（弹出 Terminal 窗口）"""
+    """发派任务到子进程执行（弹出终端窗口）"""
     command = compile_dispatch_command(task)
 
-    # 项目根目录，确保 Terminal 中 cat 能找到清单文件
+    # dispatch.py 所在目录，确保 cat 能找到清单文件
     project_root = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(project_root)  # dispatcher/ -> 项目根
 
     full_command = f'cd {project_root} && {command}'
 
-    # 转义双引号给 AppleScript
-    escaped = full_command.replace('\\', '\\\\').replace('"', '\\"')
-
-    applescript = (
-        f'tell application "Terminal"\n'
-        f'  activate\n'
-        f'  do script "{escaped}"\n'
-        f'end tell'
-    )
-
-    subprocess.run(['osascript', '-e', applescript], capture_output=True)
+    if sys.platform == 'darwin':
+        # macOS: 通过 AppleScript 打开 Terminal
+        escaped = full_command.replace('\\', '\\\\').replace('"', '\\"')
+        applescript = (
+            f'tell application "Terminal"\n'
+            f'  activate\n'
+            f'  do script "{escaped}"\n'
+            f'end tell'
+        )
+        subprocess.run(['osascript', '-e', applescript], capture_output=True)
+    elif sys.platform == 'win32':
+        # Windows: 打开新 cmd 窗口
+        subprocess.run(f'start cmd /c "{full_command}"', shell=True)
+    else:
+        # Linux: 尝试 gnome-terminal, 回退 xterm
+        try:
+            subprocess.run(
+                ['gnome-terminal', '--', 'bash', '-c', full_command],
+                capture_output=True
+            )
+        except FileNotFoundError:
+            subprocess.run(
+                ['xterm', '-e', 'bash', '-c', full_command],
+                capture_output=True
+            )
 
     return True
 
 
-def check_schedule():
-    """检查定时触发"""
+def _legacy_trigger_check(task, context):
+    """旧版硬编码触发逻辑，向后兼容没有 trigger.eval 的任务"""
+    now_str = context["now"].strftime("%H:%M")
+    today_str = context["today"].isoformat()
+    if task['trigger']['type'] == 'schedule':
+        if task['trigger']['time'] != now_str:
+            return False
+        last_run = task.get('last_run', '')
+        if last_run and last_run.startswith(today_str):
+            return False
+        return True
+    return False
+
+
+def _call_trigger_function(eval_path, context):
+    """通过 importlib 加载并执行 trigger 函数"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("trigger_eval", eval_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.should_dispatch(context)
+
+
+def evaluate_trigger(task, context):
+    """评估任务是否应该发派：优先用编译生成的 trigger 函数，否则走旧逻辑"""
+    eval_path = task.get('trigger', {}).get('eval')
+    if eval_path:
+        abs_path = os.path.expanduser(eval_path)
+        if os.path.isfile(abs_path):
+            return _call_trigger_function(abs_path, context)
+    return _legacy_trigger_check(task, context)
+
+
+def check_all_triggers():
+    """检查所有 active 任务的触发条件"""
     tasks = load_manifest()
-    now = datetime.datetime.now().strftime("%H:%M")
-    today = datetime.date.today().isoformat()
+    now = datetime.datetime.now()
+
+    context = {
+        "now": now,
+        "today": now.date(),
+        "task_dir": BASE_DIR,
+    }
 
     for task in tasks:
         if task['status'] != 'active':
             continue
-        if task['trigger']['type'] != 'schedule':
-            continue
-        if task['trigger']['time'] != now:
+
+        context["last_run"] = task.get('last_run')
+        context["run_count"] = task.get('run_count', 0)
+
+        if not evaluate_trigger(task, context):
             continue
 
-        # 检查今天是否已执行
-        last_run = task.get('last_run', '')
-        if last_run and last_run.startswith(today):
-            continue
-
-        print(f"[{now}] 发派任务: {task['name']} ({task['id']})")
+        print(f"[{now.strftime('%H:%M')}] 发派任务: {task['name']} ({task['id']})")
         if dispatch(task):
-            task['last_run'] = datetime.datetime.now().isoformat()
+            task['last_run'] = now.isoformat()
             task['run_count'] = task.get('run_count', 0) + 1
             save_manifest(tasks)
 
@@ -312,14 +381,15 @@ def check_schedule():
 def list_tasks():
     """列出所有任务"""
     tasks = load_manifest()
-    print(f"\n{'ID':<20} {'Name':<20} {'Trigger':<15} {'Status':<10} {'Last Run':<20}")
-    print('-' * 85)
+    print(f"\n{'ID':<20} {'Name':<20} {'Trigger':<15} {'Eval':<8} {'Status':<10} {'Last Run':<20}")
+    print('-' * 93)
     for t in tasks:
         trigger = t['trigger']['type']
         if trigger == 'schedule':
             trigger += f" @{t['trigger']['time']}"
+        has_eval = 'yes' if t.get('trigger', {}).get('eval') else 'legacy'
         last_run = t.get('last_run', 'never') or 'never'
-        print(f"{t['id']:<20} {t['name']:<20} {trigger:<15} {t['status']:<10} {last_run:<20}")
+        print(f"{t['id']:<20} {t['name']:<20} {trigger:<15} {has_eval:<8} {t['status']:<10} {last_run:<20}")
 
 
 def run_once(task_id):
@@ -354,11 +424,11 @@ if __name__ == '__main__':
             print("  dispatch.py run <id>           # Trigger a task manually")
             print("  dispatch.py compile <id>       # Verify, test-run, and register a task")
     else:
-        print("定时调度器运行中... (Ctrl+C 退出)")
+        print("调度器运行中... (Ctrl+C 退出)")
         print("每分钟检查一次触发条件\n")
         try:
             while True:
-                check_schedule()
+                check_all_triggers()
                 time.sleep(60)
         except KeyboardInterrupt:
             print("\n调度器已停止")

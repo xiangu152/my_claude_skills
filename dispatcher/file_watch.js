@@ -7,8 +7,10 @@
 const fs = require('fs');
 const { exec } = require('child_process');
 const path = require('path');
+const os = require('os');
 
-const MANIFEST = 'task-manifest.json';
+const BASE_DIR = path.join(getHomeDir(), '.claude');
+const MANIFEST = path.join(BASE_DIR, 'task-manifest.json');
 
 function loadTasks() {
   return JSON.parse(fs.readFileSync(MANIFEST, 'utf8')).tasks;
@@ -50,6 +52,52 @@ function compileDispatchCommand(task) {
   return 'claude --permission-mode bypassPermissions --print "' + escaped + '"';
 }
 
+function getHomeDir() {
+  return process.env.HOME || process.env.USERPROFILE || '';
+}
+
+function evaluateTrigger(task, callback) {
+  var evalPath = task.trigger && task.trigger.eval;
+  if (!evalPath) {
+    callback(true); // 无 eval 函数，兼容旧逻辑：文件变化即触发
+    return;
+  }
+  var home = getHomeDir();
+  var absPath = evalPath.replace(/^~/, home);
+  var now = new Date();
+  var context = JSON.stringify({
+    now: now,
+    today: now.toISOString().slice(0, 10),
+    last_run: task.last_run || null,
+    run_count: task.run_count || 0,
+    task_dir: home + '/.claude'
+  });
+
+  // 写临时文件执行，避免 shell 引号嵌套问题
+  var tmpFile = path.join(os.tmpdir(), 'trigger_eval_' + process.pid + '.py');
+  var pyScript = [
+    'import importlib.util, json, sys, datetime, os',
+    'spec = importlib.util.spec_from_file_location("trigger_eval", sys.argv[1])',
+    'mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)',
+    'ctx = json.loads(sys.argv[2])',
+    "ctx['now'] = datetime.datetime.fromisoformat(ctx['now'][:19])",
+    "ctx['today'] = datetime.date.fromisoformat(ctx['today'])",
+    "print('true' if mod.should_dispatch(ctx) else 'false')"
+  ].join('\n');
+
+  fs.writeFileSync(tmpFile, pyScript);
+  var pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+  exec(pythonCmd + ' "' + tmpFile + '" "' + absPath + '" ' + JSON.stringify(context), function(err, stdout) {
+    try { fs.unlinkSync(tmpFile); } catch(e) {}
+    if (err) {
+      console.error('Trigger eval error:', err.message);
+      callback(false);
+      return;
+    }
+    callback(stdout.trim() === 'true');
+  });
+}
+
 function dispatch(task) {
   const command = compileDispatchCommand(task);
 
@@ -64,7 +112,7 @@ function dispatch(task) {
       'close newTab';
     exec('osascript -e ' + JSON.stringify(script));
   } else if (process.platform === 'win32') {
-    exec('cmd /c start cmd /c "' + command + '"');
+    exec('start cmd /c "' + command + '"');
   } else {
     exec("gnome-terminal -- bash -c '" + command + "; exit'");
   }
@@ -83,14 +131,15 @@ function dispatch(task) {
 
 function listTasks() {
   const tasks = loadTasks();
-  console.log('\nID                  Name                Trigger          Status     Last Run');
-  console.log('-'.repeat(90));
+  console.log('\nID                  Name                Trigger          Eval     Status     Last Run');
+  console.log('-'.repeat(98));
   tasks.forEach(function(t) {
     var trigger = t.trigger.type;
     if (trigger === 'schedule') trigger += ' @' + t.trigger.time;
     if (trigger === 'file_watch') trigger += ' ' + t.trigger.file;
+    var hasEval = (t.trigger && t.trigger.eval) ? 'yes' : 'legacy';
     var lastRun = t.last_run || 'never';
-    console.log(t.id.padEnd(20) + t.name.padEnd(20) + trigger.padEnd(17) + t.status.padEnd(11) + lastRun);
+    console.log(t.id.padEnd(20) + t.name.padEnd(20) + trigger.padEnd(17) + hasEval.padEnd(9) + t.status.padEnd(11) + lastRun);
   });
 }
 
@@ -145,7 +194,13 @@ if (cmd === 'list') {
     fs.watchFile(absPath, { interval: 5000 }, function(curr, prev) {
       if (curr.mtime > prev.mtime) {
         console.log('[' + new Date().toISOString() + '] 文件变化: ' + watchFile);
-        dispatch(task);
+        evaluateTrigger(task, function(shouldDispatch) {
+          if (shouldDispatch) {
+            dispatch(task);
+          } else {
+            console.log('  Trigger 条件未满足，跳过发派');
+          }
+        });
       }
     });
     watchers[task.id] = true;
