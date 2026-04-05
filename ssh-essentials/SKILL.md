@@ -249,7 +249,12 @@ PermitRootLogin no
 Port 2222
 
 # Restart SSH service
+# Linux:
 sudo systemctl restart sshd
+# macOS:
+sudo launchctl stop com.openssh.sshd && sudo launchctl start com.openssh.sshd
+# Windows (run in PowerShell as Admin):
+Restart-Service sshd
 ```
 
 ## Troubleshooting

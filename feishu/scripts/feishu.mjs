@@ -8,6 +8,8 @@
  * Env vars: FEISHU_APP_ID, FEISHU_APP_SECRET
  */
 
+import path from "node:path";
+
 const BASE_URL = "https://open.feishu.cn/open-apis";
 
 // --- Auth ---
@@ -263,7 +265,7 @@ const doc = {
     } else if (file_path) {
       const fs = await import("node:fs");
       imageBuffer = fs.readFileSync(file_path);
-      fileName = file_path.split("/").pop();
+      fileName = path.basename(file_path);
     } else {
       throw new Error("Provide --url or --file_path");
     }
@@ -302,7 +304,7 @@ const doc = {
     } else if (file_path) {
       const fs = await import("node:fs");
       fileBuffer = fs.readFileSync(file_path);
-      fileName = filename || file_path.split("/").pop();
+      fileName = filename || path.basename(file_path);
     } else {
       throw new Error("Provide --url or --file_path");
     }
