@@ -182,7 +182,7 @@ description: "Create and edit Excel workbooks with formulas, formatting, and tem
 
 ### Step 5: Test the Skill
 
-1. Install the skill to `~/.claude/skills/`
+1. Install the skill to `$HOME/.claude/skills/`
 2. Restart Claude Code
 3. Test with real queries that should trigger the skill
 4. Verify scripts run correctly

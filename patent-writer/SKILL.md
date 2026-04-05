@@ -30,7 +30,7 @@ Draft patent applications from codebases. Write section by section, research eve
 Before touching the code, read the user's template to understand the required structure:
 
 ```bash
-python3 -c "
+$(command -v python3 || command -v python) -c "
 from docx import Document
 doc = Document('[user_template_path]')
 for i, p in enumerate(doc.paragraphs[:50]):
@@ -273,7 +273,7 @@ Template was already read in Phase 1. Now fill it in:
 **Step 5.3 — Verify output**
 
 ```bash
-python3 -c "
+$(command -v python3 || command -v python) -c "
 from docx import Document
 doc = Document('[output_path]')
 print(f'段落数: {len(doc.paragraphs)}')

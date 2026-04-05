@@ -23,7 +23,7 @@ If it's a local folder, read the contents:
 
 If it's a git repo, clone it to a temp directory first:
 ```bash
-git clone <url> /tmp/skill-to-install
+git clone <url> "$TMPDIR/skill-to-install"
 ```
 
 ## Step 3: Check Dependencies
@@ -57,18 +57,18 @@ Copy the skill folder to the personal skills directory.
 - 正确做法：**先删除旧版本（如果有），再复制。目标目录不能预先存在。**
 - 复制后必须用 `find` 验证文件结构，不能只靠回忆复述文件名。
 
-**macOS / Linux:**
+**macOS / Linux / Windows (bash):**
 ```bash
 # 先清理旧版本（避免嵌套）
-rm -rf ~/.claude/skills/<skill-name>
+rm -rf "$HOME/.claude/skills/<skill-name>"
 # 再复制
-cp -r /path/to/skill-folder ~/.claude/skills/<skill-name>
+cp -r /path/to/skill-folder "$HOME/.claude/skills/<skill-name>"
 ```
 
 **Windows (WSL):**
 ```bash
-rm -rf ~/.claude/skills/<skill-name>
-cp -r /path/to/skill-folder ~/.claude/skills/<skill-name>
+rm -rf "$HOME/.claude/skills/<skill-name>"
+cp -r /path/to/skill-folder "$HOME/.claude/skills/<skill-name>"
 ```
 
 **Windows (PowerShell):**
@@ -79,8 +79,8 @@ Copy-Item -Recurse "C:\path\to\skill-folder" "$env:USERPROFILE\.claude\skills\<s
 
 如果源目录名与 `<skill-name>` 不一致，需要重命名：
 ```bash
-rm -rf ~/.claude/skills/<skill-name>
-cp -r /path/to/源目录名 ~/.claude/skills/<skill-name>
+rm -rf "$HOME/.claude/skills/<skill-name>"
+cp -r /path/to/源目录名 "$HOME/.claude/skills/<skill-name>"
 ```
 
 ## Step 5: Set Up Environment Variables
@@ -110,29 +110,29 @@ Tell the user they may need to restart their terminal or Claude Code for env var
 
 1. **用 `find` 列出实际文件结构**（不要只用 `ls`，不要自己回忆文件名）：
 ```bash
-find ~/.claude/skills/<skill-name> -type f
+find "$HOME/.claude/skills/<skill-name>" -type f
 ```
 
 2. **检查是否产生嵌套** — 如果看到 `<skill-name>/<skill-name>/` 结构，说明安装出错了，需要重新执行 Step 4：
 ```bash
 # 如果检测到嵌套，修复：
-rm -rf ~/.claude/skills/<skill-name>
-cp -r /path/to/skill-folder/. ~/.claude/skills/<skill-name>
+rm -rf "$HOME/.claude/skills/<skill-name>"
+cp -r /path/to/skill-folder/. "$HOME/.claude/skills/<skill-name>"
 ```
 
 3. **检查脚本权限**（如果 skill 有 scripts/ 目录）：
 ```bash
-ls -la ~/.claude/skills/<skill-name>/scripts/
-# 如果 .sh 文件不可执行：
-chmod +x ~/.claude/skills/<skill-name>/scripts/*.sh
+ls -la "$HOME/.claude/skills/<skill-name>/scripts/"
+# 如果 .sh 文件不可执行（macOS/Linux）：
+chmod +x "$HOME/.claude/skills/<skill-name>/scripts/"*.sh
 ```
 
 4. **如果 skill 有可执行脚本，做一次 dry run 测试**：
 ```bash
 # 根据实际脚本文件名调整，查看 SKILL.md 中的 Usage 部分
-node ~/.claude/skills/<skill-name>/scripts/search.mjs --help
+node "$HOME/.claude/skills/<skill-name>/scripts/search.mjs" --help
 # 或
-python ~/.claude/skills/<skill-name>/scripts/main.py --help
+python "$HOME/.claude/skills/<skill-name>/scripts/main.py" --help
 ```
 
 5. Restart Claude Code (exit and re-run `claude`) for the new skill to be recognized.
@@ -146,7 +146,7 @@ After installation, report to the user:
 ```
 ✅ Skill "<skill-name>" installed successfully!
 
-📁 Location: ~/.claude/skills/<skill-name>/
+📁 Location: $HOME/.claude/skills/<skill-name>/
 🔧 Dependencies: <list what was checked/set up>
 🔑 Env vars: <list what was configured>
 💬 Invoke with: /<skill-name> or ask about <description>

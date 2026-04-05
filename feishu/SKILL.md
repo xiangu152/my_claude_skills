@@ -71,7 +71,7 @@ node scripts/feishu.mjs doc create_table_with_values --doc_token ABC123def --row
 node scripts/feishu.mjs doc upload_image --doc_token ABC123def --url "https://example.com/img.png"
 
 # Upload image from local file
-node scripts/feishu.mjs doc upload_image --doc_token ABC123def --file_path "/tmp/img.png"
+node scripts/feishu.mjs doc upload_image --doc_token ABC123def --file_path "path/to/img.png"
 
 # Upload file attachment
 node scripts/feishu.mjs doc upload_file --doc_token ABC123def --url "https://example.com/report.pdf"

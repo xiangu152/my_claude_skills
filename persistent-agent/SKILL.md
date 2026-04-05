@@ -12,7 +12,7 @@ Make Claude Code behave like a persistent agent: memory survives across sessions
 Claude Code sessions are ephemeral — closing the terminal kills the process. This skill uses files to persist context across sessions:
 
 ```
-~/.claude/workspace/
+$HOME/.claude/workspace/
 ├── SOUL.md          ← Who I am (personality, voice, principles)
 ├── USER.md          ← Who I'm helping (name, preferences, context)
 ├── AGENTS.md        ← How I work (rules, startup sequence, behavior)
@@ -28,33 +28,33 @@ Claude Code sessions are ephemeral — closing the terminal kills the process. T
 
 ## First-Time Setup
 
-If `~/.claude/workspace/` doesn't exist, initialize it:
+If `$HOME/.claude/workspace/` doesn't exist, initialize it:
 
 ```bash
-mkdir -p ~/.claude/workspace/memory ~/.claude/workspace/.learnings
+mkdir -p "$HOME/.claude/workspace/memory" "$HOME/.claude/workspace/.learnings"
 ```
 
 Then create the core files (see assets/ for templates or write your own):
 
 ```bash
-cp -r assets/*.md ~/.claude/workspace/
+cp -r assets/*.md "$HOME/.claude/workspace/"
 ```
 
 ### CLAUDE.md Entry Point
 
-Place this in your project's root directory (or `~/.claude/CLAUDE.md` for global):
+Place this in your project's root directory (or `$HOME/.claude/CLAUDE.md` for global):
 
 ```markdown
 # Persistent Agent
 
-Read and follow the persistent-agent skill at ~/.claude/skills/persistent-agent/SKILL.md
+Read and follow the persistent-agent skill at $HOME/.claude/skills/persistent-agent/SKILL.md
 
 On every session start:
-1. Read ~/.claude/workspace/SOUL.md
-2. Read ~/.claude/workspace/USER.md
-3. Read ~/.claude/workspace/MEMORY.md
-4. Read ~/.claude/workspace/memory/$(date +%Y-%m-%d).md (today)
-5. Read ~/.claude/workspace/memory/$(date -v-1d +%Y-%m-%d).md (yesterday)
+1. Read $HOME/.claude/workspace/SOUL.md
+2. Read $HOME/.claude/workspace/USER.md
+3. Read $HOME/.claude/workspace/MEMORY.md
+4. Read $HOME/.claude/workspace/memory/$(date +%Y-%m-%d).md (today)
+5. Read $HOME/.claude/workspace/memory/$(date -d yesterday +%Y-%m-%d 2>/dev/null || date -v-1d +%Y-%m-%d).md (yesterday)
 ```
 
 ## Session Lifecycle
@@ -63,10 +63,10 @@ On every session start:
 
 At the beginning of every session, read these files in order:
 
-1. `~/.claude/workspace/SOUL.md` — Who am I?
-2. `~/.claude/workspace/USER.md` — Who am I helping?
-3. `~/.claude/workspace/memory/YYYY-MM-DD.md` (today + yesterday) — Recent context
-4. `~/.claude/workspace/MEMORY.md` — Long-term memory
+1. `$HOME/.claude/workspace/SOUL.md` — Who am I?
+2. `$HOME/.claude/workspace/USER.md` — Who am I helping?
+3. `$HOME/.claude/workspace/memory/YYYY-MM-DD.md` (today + yesterday) — Recent context
+4. `$HOME/.claude/workspace/MEMORY.md` — Long-term memory
 
 Do NOT ask permission. Just read them.
 

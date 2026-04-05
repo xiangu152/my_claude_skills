@@ -11,12 +11,10 @@ Search the web and get relevant results optimized for LLM consumption.
 
 Requires the `TAVILY_API_KEY` environment variable. Get your API key at https://tavily.com.
 
-Set it in your shell profile (`~/.zshrc` or `~/.bashrc`):
+Set it in your shell profile (`~/.zshrc`, `~/.bashrc`, or Windows `~/.bash_profile`):
 ```bash
 export TAVILY_API_KEY="your-api-key-here"
 ```
-
-Windows 用户：Claude Code 自带 bash，同样写入 `~/.bashrc` 即可。
 
 ## Usage
 

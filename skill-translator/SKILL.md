@@ -82,7 +82,7 @@ description: "Does X. Use when Y. NOT for: Z."
 | OpenClaw | Claude Code |
 |---|---|
 | `{baseDir}/scripts/foo.mjs` | `$SCRIPT_DIR/scripts/foo.mjs` or `scripts/foo.mjs` |
-| OpenClaw skill install | `cp -r skill-name ~/.claude/skills/` |
+| OpenClaw skill install | `cp -r skill-name $HOME/.claude/skills/` |
 
 ### Step 4: Copy Resource Files
 
@@ -122,7 +122,7 @@ Claude Code skills need a Chinese-language `README-HUMAN.md`. Create it with thi
 ## 安装到 Claude Code
 
 ```bash
-cp -r skill-name ~/.claude/skills/
+cp -r skill-name "$HOME/.claude/skills/"
 ```
 
 ## 验证
@@ -158,14 +158,14 @@ find /path/to/target/skill-name -type f
 
 3. Verify no OpenClaw-specific syntax remains:
 ```bash
-grep -n "baseDir\|clawdbot\|clawhub\|clawic\|openclaw\|Codex" /path/to/target/skill-name/SKILL.md
+grep -nE "baseDir|clawdbot|clawhub|clawic|openclaw|Codex" /path/to/target/skill-name/SKILL.md
 # Should return nothing (or only intentional references)
 ```
 
 4. Install and test:
 ```bash
-rm -rf ~/.claude/skills/skill-name
-cp -r /path/to/target/skill-name ~/.claude/skills/skill-name
+rm -rf "$HOME/.claude/skills/skill-name"
+cp -r /path/to/target/skill-name "$HOME/.claude/skills/skill-name"
 ```
 
 ## Differences Reference
@@ -180,4 +180,4 @@ cp -r /path/to/target/skill-name ~/.claude/skills/skill-name
 | Config | JSON in `skills.entries` | Environment variables |
 | Install method | `clawhub install` or manual | `cp -r` to `~/.claude/skills/` |
 | Human docs | Optional | README-HUMAN.md (required, Chinese) |
-| Directory | `~/.openclaw/workspace/skills/` | `~/.claude/skills/` |
+| Directory | `~/.openclaw/workspace/skills/` | `$HOME/.claude/skills/` |
