@@ -1,0 +1,32 @@
+{
+  "tasks": [
+    {
+      "id": "example-daily-report",
+      "name": "每日报告示例",
+      "version": "1.0",
+      "compiled_at": "2026-04-05T19:30:00+08:00",
+      "environment": {
+        "env_vars": ["LOG_PATH"],
+        "tools": ["python3"],
+        "files": ["./logs/"]
+      },
+      "task": {
+        "instruction": "读取 ./logs/ 下今天的日志文件，生成 Markdown 日报，包含关键事件摘要和统计数据，写入 output/daily-report.md",
+        "skills": [],
+        "timeout": 3600
+      },
+      "delivery": {
+        "path": "./output/daily-report.md",
+        "format": "markdown",
+        "log_path": "./logs/example-daily-report.log"
+      },
+      "trigger": {
+        "type": "schedule",
+        "time": "09:00"
+      },
+      "status": "inactive",
+      "run_count": 0,
+      "last_run": null
+    }
+  ]
+}
