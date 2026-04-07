@@ -65,14 +65,14 @@ class ForestIndexer:
         self._cache[text] = emb
         return emb
 
-    def _embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """批量嵌入"""
+    def _embed_batch(self, texts: list[str], batch_size: int = 64) -> list[list[float]]:
+        """批量嵌入（默认 batch_size=64）"""
         items = [(i, t) for i, t in enumerate(texts) if t.strip()]
         if not items:
             return [[0.0] * self.DIM for _ in texts]
 
         raw_texts = [t for _, t in items]
-        embs = self.embed_model.embed_documents(raw_texts)
+        embs = self.embed_model.embed_documents_batch(raw_texts, batch_size=batch_size)
 
         out: list[list[float]] = [[0.0] * self.DIM for _ in texts]
         for (i, _), emb in zip(items, embs):

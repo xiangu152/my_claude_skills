@@ -11,6 +11,10 @@
 
   # 本地模式（transformers）
   model = get_embedding_model(provider="transformers", model_path="/path/to/model")
+
+批量嵌入：
+  model = get_embedding_model(provider="nvidia", batch_size=64)
+  embeddings = model.embed_documents_batch(texts, batch_size=64)
 """
 
 import os
@@ -27,6 +31,7 @@ class EmbeddingModel(ABC):
     # 子类应设置的维度
     DIM: int = 4096
     MODEL_NAME: str = "unknown"
+    DEFAULT_BATCH_SIZE: int = 64
 
     @abstractmethod
     def embed_query(self, text: str) -> list[float]:
@@ -35,6 +40,23 @@ class EmbeddingModel(ABC):
     @abstractmethod
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         ...
+
+    def embed_documents_batch(self, texts: list[str], batch_size: int = 64) -> list[list[float]]:
+        """
+        批量嵌入接口
+
+        Args:
+            texts: 文本列表
+            batch_size: 每批处理的数量（默认 64）
+
+        Returns:
+            嵌入向量列表
+        """
+        results = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            results.extend(self.embed_documents(batch))
+        return results
 
     @property
     def provider(self) -> str:
@@ -58,13 +80,14 @@ class NvidiaEmbeddings(EmbeddingModel):
 
     DIM = 4096
     MODEL_NAME = "nvidia/nv-embed-v1"
-    MAX_BATCH_SIZE = 50
+    MAX_BATCH_SIZE = 50  # API 单次请求上限
 
     def __init__(
         self,
         model: str = "nvidia/nv-embed-v1",
         api_key: Optional[str] = None,
         base_url: str = "https://integrate.api.nvidia.com/v1/embeddings",
+        batch_size: int = 64,
     ):
         self.model = model
         self.api_key = api_key or os.environ.get("NVIDIA_API_KEY", "")
@@ -76,6 +99,7 @@ class NvidiaEmbeddings(EmbeddingModel):
                 "方式2: 初始化时传入 api_key 参数"
             )
         self.base_url = base_url
+        self.batch_size = min(batch_size, self.MAX_BATCH_SIZE)  # 不超过 API 上限
         self._headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -96,10 +120,10 @@ class NvidiaEmbeddings(EmbeddingModel):
         return result["data"][0]["embedding"]
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """分批调用 API，避免单次请求过大"""
+        """分批调用 API，每批大小为 batch_size（不超过 API 上限）"""
         all_embeddings = []
-        for i in range(0, len(texts), self.MAX_BATCH_SIZE):
-            batch = texts[i : i + self.MAX_BATCH_SIZE]
+        for i in range(0, len(texts), self.batch_size):
+            batch = texts[i : i + self.batch_size]
             result = self._post({"input": batch, "model": self.model})
             embeddings = [None] * len(batch)
             for item in result["data"]:
@@ -122,6 +146,7 @@ class TransformersEmbeddings(EmbeddingModel):
     """
 
     DIM = 1024  # 默认维度，可通过 init 覆盖
+    DEFAULT_BATCH_SIZE = 64
 
     def __init__(
         self,
@@ -129,6 +154,7 @@ class TransformersEmbeddings(EmbeddingModel):
         dim: int = 1024,
         device: Optional[str] = None,
         max_length: int = 512,
+        batch_size: int = 64,
     ):
         self.model_path = model_path or os.environ.get(
             "RAG_EMBED_MODEL_PATH",
@@ -136,6 +162,7 @@ class TransformersEmbeddings(EmbeddingModel):
         )
         self.dim = dim
         self.max_length = max_length
+        self.batch_size = batch_size
 
         # 设备选择：优先 MPS，其次 CUDA，最后 CPU
         if device:
@@ -170,30 +197,39 @@ class TransformersEmbeddings(EmbeddingModel):
             print(f"[TransformersEmbeddings] 模型加载完成，维度: {self.dim}", flush=True)
 
     def embed_query(self, text: str) -> list[float]:
-        emb = self._embed_single(text)
-        return emb
+        return self._embed_batch([text])[0]
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [self._embed_single(t) for t in texts]
+        """分批处理文本，以 batch_size 为单位批量推理"""
+        results = []
+        for i in range(0, len(texts), self.batch_size):
+            batch = texts[i : i + self.batch_size]
+            results.extend(self._embed_batch(batch))
+        return results
 
-    def _embed_single(self, text: str) -> list[float]:
-        """对单条文本生成嵌入向量"""
+    def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """对一批文本生成嵌入向量"""
         self._load_model()
 
+        # 分词
+        texts_truncated = [t[:3000] for t in texts]
         inputs = self._tokenizer(
-            text[:3000],
+            texts_truncated,
             return_tensors="pt",
             truncation=True,
             max_length=self.max_length,
+            padding=True,
         )
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
         with torch.no_grad():
             outputs = self._model(**inputs)
             # Mean pooling
-            emb = outputs.last_hidden_state.mean(dim=1).squeeze().float().cpu().numpy()
+            embeddings = outputs.last_hidden_state.mean(dim=1).squeeze().float().cpu().numpy()
 
-        return emb.tolist()
+        if len(texts) == 1:
+            return [embeddings.tolist()]
+        return embeddings.tolist()
 
 
 # ─────────────────────────────────────────
@@ -220,6 +256,7 @@ def get_embedding_model(
             model=kwargs.get("model", "nvidia/nv-embed-v1"),
             api_key=api_key,
             base_url=kwargs.get("base_url", "https://integrate.api.nvidia.com/v1/embeddings"),
+            batch_size=kwargs.get("batch_size", 64),
         )
     elif provider == "transformers":
         return TransformersEmbeddings(
@@ -227,6 +264,7 @@ def get_embedding_model(
             dim=kwargs.get("dim", 1024),
             device=kwargs.get("device"),
             max_length=kwargs.get("max_length", 512),
+            batch_size=kwargs.get("batch_size", 64),
         )
     else:
         raise ValueError(
@@ -271,6 +309,7 @@ class EmbeddingConfig:
             "model_path": os.environ.get("RAG_EMBED_MODEL_PATH"),
             "base_url": os.environ.get("RAG_EMBED_BASE_URL"),
             "dim": int(os.environ.get("RAG_EMBED_DIM", "4096")),
+            "batch_size": int(os.environ.get("RAG_EMBED_BATCH_SIZE", "64")),
         }
 
     @classmethod
@@ -297,5 +336,7 @@ class EmbeddingConfig:
             kwargs["base_url"] = config["base_url"]
         if config.get("dim"):
             kwargs["dim"] = config["dim"]
+        if config.get("batch_size"):
+            kwargs["batch_size"] = config["batch_size"]
 
         return get_embedding_model(provider=provider, api_key=config.get("api_key"), **kwargs)
