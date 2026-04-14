@@ -411,8 +411,144 @@ const perm = {
   },
 };
 
+// --- IM: Messaging ---
+const im = {
+  async create_message({ receive_id, msg_type, content, receive_id_type }) {
+    const data = await api("POST", "/im/v1/messages", {
+      params: { receive_id_type: receive_id_type || "chat_id" },
+      body: { receive_id, msg_type, content },
+    });
+    return { message_id: data.message?.message_id, create_time: data.message?.create_time };
+  },
+
+  async list_messages({ container_id_type, container_id, page_size, sort_type }) {
+    const data = await api("GET", `/im/v1/messages`, {
+      params: {
+        container_id_type: container_id_type || "chat",
+        container_id,
+        page_size: page_size || 20,
+        sort_type: sort_type || "ByCreateTimeDesc",
+      },
+    });
+    return { items: data.items ?? [], has_more: data.has_more, page_token: data.page_token };
+  },
+};
+
+// --- IM: Chat/Group ---
+const chat = {
+  async create({ name, user_id_list, owner_id, chat_mode, chat_type, description }) {
+    const data = await api("POST", "/im/v1/chats", {
+      body: {
+        name,
+        user_id_list,
+        owner_id,
+        chat_mode: chat_mode || "group",
+        chat_type: chat_type || "private",
+        ...(description ? { description } : {}),
+      },
+    });
+    return { chat_id: data.chat_id, name: data.name };
+  },
+
+  async list({ page_size }) {
+    const data = await api("GET", "/im/v1/chats", {
+      params: { page_size: page_size || 100 },
+    });
+    return { items: data.items ?? [], has_more: data.has_more, page_token: data.page_token };
+  },
+
+  async get_members({ chat_id }) {
+    const data = await api("GET", `/im/v1/chats/${chat_id}/members`);
+    return { members: data.items ?? [] };
+  },
+
+  async add_members({ chat_id, id_list, member_id_type }) {
+    await api("POST", `/im/v1/chats/${chat_id}/members`, {
+      params: { member_id_type: member_id_type || "open_id" },
+      body: { id_list },
+    });
+    return { success: true };
+  },
+
+  async remove_members({ chat_id, id_list, member_id_type }) {
+    await api("DELETE", `/im/v1/chats/${chat_id}/members`, {
+      params: { member_id_type: member_id_type || "open_id" },
+      body: { id_list },
+    });
+    return { success: true };
+  },
+
+  async update({ chat_id, name, description }) {
+    const body = {};
+    if (name !== undefined) body.name = name;
+    if (description !== undefined) body.description = description;
+    await api("PUT", `/im/v1/chats/${chat_id}`, { body });
+    return { success: true };
+  },
+
+  async delete({ chat_id }) {
+    await api("DELETE", `/im/v1/chats/${chat_id}`);
+    return { success: true };
+  },
+};
+
+// --- Docx: Search ---
+const docx_search = {
+  async search({ search_key, count, offset, docs_template_type }) {
+    const data = await api("POST", "/docx/v1/documents/search", {
+      body: {
+        search_key,
+        count: count || 10,
+        offset: offset || 0,
+        docs_template_type: docs_template_type || 0,
+      },
+    });
+    return {
+      items: data.items ?? [],
+      total: data.total,
+      has_more: data.has_more,
+    };
+  },
+};
+
+// --- Wiki: Search ---
+const wiki_search = {
+  async search({ query, count, offset, space_id, obj_type }) {
+    const data = await api("POST", "/wiki/v2/nodes/search", {
+      body: {
+        query,
+        count: count || 10,
+        offset: offset || 0,
+        ...(space_id ? { space_ids: [space_id] } : {}),
+        ...(obj_type ? { node_types: [obj_type] } : {}),
+      },
+    });
+    return { items: data.items ?? [], has_more: data.has_more };
+  },
+};
+
+// --- Docx: Import ---
+const docx_import = {
+  async import({ file_extension, file_name, file_size, parent_token, parent_type }) {
+    const data = await api("POST", "/docx/v1/documents/import", {
+      body: {
+        file_extension,
+        file_name,
+        file_size,
+        parent_token,
+        parent_type: parent_type || "explorer",
+      },
+    });
+    return { document_id: data.document?.document_id, job_id: data.job?.job_id, url: data.document?.url };
+  },
+
+  async import_status({ job_id }) {
+    const data = await api("GET", `/docx/v1/documents/import/${job_id}`);
+    return { status: data.job?.status, document_id: data.job?.document_id };
+  },
+};
+
 // --- Wiki ---
-const wiki = {
   async spaces() {
     const data = await api("GET", "/wiki/v2/spaces", { params: { page_size: 50 } });
     return { spaces: (data.items ?? []).map((s) => ({ space_id: s.space_id, name: s.name })) };
@@ -531,7 +667,7 @@ const bitable = {
 };
 
 // --- Main ---
-const tools = { doc, drive, perm, wiki, bitable };
+const tools = { doc, drive, perm, wiki, bitable, im, chat, docx_search, wiki_search, docx_import };
 
 async function main() {
   const [tool, action, ...rest] = process.argv.slice(2);

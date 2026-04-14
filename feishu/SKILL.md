@@ -1,6 +1,6 @@
 ---
 name: feishu
-description: "Feishu (Lark) API operations for documents, cloud storage, permissions, wiki, and bitables. Use when: (1) reading/writing Feishu documents, (2) managing cloud drive files, (3) managing document permissions, (4) navigating wiki/knowledge base, (5) working with bitable (multidimensional tables). Triggers on 'feishu', 'lark', '飞书', 'cloud doc', 'wiki', 'bitable'. NOT for: messaging/chat (not supported), calendar, or when the task doesn't involve Feishu."
+description: "Feishu (Lark) API operations for documents, cloud storage, permissions, wiki, bitables, messaging, and group chat. Use when: (1) reading/writing Feishu documents, (2) managing cloud drive files, (3) managing document permissions, (4) navigating wiki/knowledge base, (5) working with bitable (multidimensional tables), (6) sending messages or managing groups, (7) searching documents/wiki. Triggers on 'feishu', 'lark', '飞书', 'cloud doc', 'wiki', 'bitable', 'im message', 'send message', 'group chat'. NOT for: calendar, audio/video calls, or when the task doesn't involve Feishu."
 ---
 
 # Feishu
@@ -210,6 +210,81 @@ To edit a wiki page:
 #### Required Permissions
 
 `wiki:wiki` or `wiki:wiki:readonly`
+
+### feishu_im — Messaging
+
+```bash
+# Send message
+node scripts/feishu.mjs im create_message --receive_id oc_xxxxx --msg_type text --content '{"text":"Hello"}'
+
+# List messages in chat
+node scripts/feishu.mjs im list_messages --container_id oc_xxxxx --container_id_type chat --page_size 20
+```
+
+**Required Permissions:** `im:message`, `im:message:readonly`
+
+### feishu_chat — Group Management
+
+```bash
+# Create group
+node scripts/feishu.mjs chat create --name "群名" --owner_id ou_xxxxx --user_id_list '["ou_xxxxx"]'
+
+# List groups
+node scripts/feishu.mjs chat list
+
+# Get group members
+node scripts/feishu.mjs chat get_members --chat_id oc_xxxxx
+
+# Add members
+node scripts/feishu.mjs chat add_members --chat_id oc_xxxxx --id_list '["ou_yyyyy"]'
+
+# Remove members
+node scripts/feishu.mjs chat remove_members --chat_id oc_xxxxx --id_list '["ou_yyyyy"]'
+
+# Update group info
+node scripts/feishu.mjs chat update --chat_id oc_xxxxx --name "新群名" --description "描述"
+
+# Delete group
+node scripts/feishu.mjs chat delete --chat_id oc_xxxxx
+```
+
+**Required Permissions:** `im:chat`, `im:chat:readonly`
+
+### feishu_docx_search — Document Search
+
+```bash
+# Search documents
+node scripts/feishu.mjs docx_search search --search_key "关键词" --count 10
+```
+
+**Note:** Requires OAuth (`useUAT: true` or `--oauth` flag). Returns 99991663 without it.
+
+**Required Permissions:** `docx:document:readonly`
+
+### feishu_wiki_search — Knowledge Base Search
+
+```bash
+# Search wiki nodes
+node scripts/feishu.mjs wiki_search search --query "关键词" --count 10 --space_id 7xxx
+```
+
+**Note:** Requires OAuth (`useUAT: true` or `--oauth` flag).
+
+**Required Permissions:** `wiki:wiki:readonly`
+
+### feishu_docx_import — Document Import
+
+```bash
+# Import external file to Feishu docs
+node scripts/feishu.mjs docx_import import --file_extension docx --file_name "report.docx" --file_size 12345 --parent_token fldcnXXX
+
+# Check import status
+node scripts/feishu.mjs docx_import import_status --job_id job_xxxxx
+```
+
+**Supported formats:** `docx`, `doc`, `xlsx`, `xls`, `pptx`, `ppt`, `pdf`
+
+**Required Permissions:** `docx:document`, `drive:drive`
 
 ### feishu_bitable — Multidimensional Tables
 
