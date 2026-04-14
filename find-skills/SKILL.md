@@ -20,7 +20,7 @@ description: 帮助用户发现和安装 agent skills。当用户询问"如何�
 
 ## Skills 生态系统
 
-Claude Code Skills 是模块化包，通过专门的知识、工作流和工具扩展 agent 能力。
+Skills 是模块化包，通过专门的知识、工作流和工具扩展 agent 能力。
 
 **浏览 skills：** https://skills.claude.com/
 
