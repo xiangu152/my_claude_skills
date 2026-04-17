@@ -1,0 +1,7 @@
+{
+  "workflows": {
+    "data_pipeline": "fetch,clean,export",
+    "analysis_pipeline": "fetch,analyze,report",
+    "multi_branch": "fetch,clean,save;fetch,analyze,save;fetch,export,save"
+  }
+}
